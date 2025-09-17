@@ -91,8 +91,8 @@ for directory in "$@"; do
     if "$EXIFTOOL" -P -overwrite_original \
          -Make="$camera_make" \
          -Model="$camera_model" \
-         -ImageDescription="Film: $film" \
-         -XMP:Description="Film: $film" \
+         -ImageDescription="film: $film" \
+         -XMP:Description="film: $film" \
          -- "$file" >/dev/null 2>&1; then
       print -r -- "$file" >> "$0/success.list"
     else
