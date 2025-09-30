@@ -22,6 +22,12 @@ for directory in "$@"; do
 
     camera_make_and_model=$(osascript -e 'text returned of (display dialog "Camera make & model:" default answer "")')
 
+    # `camera_make_and_model` must be at least two words
+    if [[ $(echo "$camera_make_and_model" | wc -w) -lt 2 ]]; then
+      osascript -e 'display dialog "Please enter both camera make and model (at least two words)." buttons {"OK"} default button 1 with title "Error"'
+      exit 1
+    fi
+
     # take the first word as make, the rest as model
     camera_make=$(echo "$camera_make_and_model" | awk -F ' ' '{print $1}')
     camera_model=$(echo "$camera_make_and_model" | awk -F ' ' '{ $1=""; sub(/^ /, ""); print }')
