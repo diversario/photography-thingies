@@ -1,4 +1,24 @@
-#!/usr/bin/env python3
+#!/opt/homebrew/bin/python3
+
+# AppleScript to run this script from Automator
+# receives current folders, in Finder
+
+# this does not work with apply python distro for whatever fucking permissions reasons
+
+# on run {input, parameters}
+# 	-- Build argument string from Automator input
+# 	set argList to ""
+# 	repeat with anItem in input
+# 		-- Convert to POSIX path if they're files; leave as text otherwise
+# 		set argList to argList & " " & quoted form of (POSIX path of anItem)
+# 	end repeat
+
+# 	-- Construct command with arguments
+# 	set cmd to "/opt/homebrew/bin/python3 /Users/diversario/Documents/Projects/Personal/photography-thingies/populate_exif_metadata.py" & argList
+
+# 	-- Run the command
+# 	do shell script cmd
+# end run
 
 import sys
 import os
@@ -12,15 +32,16 @@ import pathlib
 from typing import Dict, List, Tuple, Optional
 
 
-def show_dialog(message: str, title: str = "ExifTool", buttons: List[str] = None) -> str:
+def show_dialog(message: str, title: str = "ExifTool", buttons: List[str] = []) -> str:
     """Show a macOS dialog using osascript."""
-    if buttons is None:
+    if not buttons:
         buttons = ["OK"]
 
     button_list = '{"' + '", "'.join(buttons) + '"}'
     cmd = [
-        "osascript", "-e",
-        f'display dialog "{message}" buttons {button_list} default button 1 with title "{title}"'
+        "osascript",
+        "-e",
+        f'display dialog "{message}" buttons {button_list} default button 1 with title "{title}"',
     ]
 
     try:
@@ -33,8 +54,9 @@ def show_dialog(message: str, title: str = "ExifTool", buttons: List[str] = None
 def get_input_dialog(prompt: str, title: str = "Input", default: str = "") -> str:
     """Get user input via macOS dialog."""
     cmd = [
-        "osascript", "-e",
-        f'text returned of (display dialog "{prompt}" default answer "{default}" with title "{title}")'
+        "osascript",
+        "-e",
+        f'text returned of (display dialog "{prompt}" default answer "{default}" with title "{title}")',
     ]
 
     try:
@@ -46,10 +68,7 @@ def get_input_dialog(prompt: str, title: str = "Input", default: str = "") -> st
 
 def show_alert(title: str, message: str):
     """Show a macOS alert using osascript."""
-    cmd = [
-        "osascript", "-e",
-        f'display alert "{title}" message "{message}" as warning'
-    ]
+    cmd = ["osascript", "-e", f'display alert "{title}" message "{message}" as warning']
 
     try:
         subprocess.run(cmd, capture_output=True, text=True, check=True)
@@ -109,7 +128,7 @@ def get_metadata_from_user() -> Dict[str, str]:
         "cameraModel": camera_model,
         "lensMake": lens_make,
         "lensModel": lens_model,
-        "film": film
+        "film": film,
     }
 
 
@@ -118,17 +137,20 @@ def load_or_create_metadata(directory: str) -> Dict[str, str]:
     metadata_file = os.path.join(directory, "metadata.json")
 
     if not os.path.isfile(metadata_file):
-        show_dialog("Directory has no metadata.json file.\\n\\nEnter values to create one.", "Error")
+        show_dialog(
+            "Directory has no metadata.json file.\\n\\nEnter values to create one.",
+            "Error",
+        )
         metadata = get_metadata_from_user()
 
-        with open(metadata_file, 'w') as f:
+        with open(metadata_file, "w") as f:
             json.dump(metadata, f, indent=2)
 
         return metadata
 
     # Load existing metadata
     try:
-        with open(metadata_file, 'r') as f:
+        with open(metadata_file, "r") as f:
             metadata = json.load(f)
     except (json.JSONDecodeError, IOError):
         show_dialog(f"Invalid metadata.json in {directory}", "Error")
@@ -173,10 +195,10 @@ def find_xmp_sidecars(jpeg_file: str) -> List[str]:
     base_name = os.path.basename(jpeg_file)
 
     # get base filename without extension
-    filename = base_name.split('.')[0]
+    filename = base_name.split(".")[0]
 
     # but also get all extensions, except the last one
-    extensions = base_name.split('.')[1:-1]
+    extensions = base_name.split(".")[1:-1]
 
     for ext in [".xmp", ".XMP"]:
         xmp_file = pathlib.Path(dir_name) / (filename + ext)
@@ -184,9 +206,9 @@ def find_xmp_sidecars(jpeg_file: str) -> List[str]:
             xmp_files.append(xmp_file)
 
         for extension in extensions:
-          xmp_file = pathlib.Path(dir_name) / (filename + f".{extension}" + ext)
-          if os.path.isfile(xmp_file):
-              xmp_files.append(xmp_file)
+            xmp_file = pathlib.Path(dir_name) / (filename + f".{extension}" + ext)
+            if os.path.isfile(xmp_file):
+                xmp_files.append(xmp_file)
 
     return xmp_files
 
@@ -197,17 +219,19 @@ def update_file_metadata(args: Tuple[str, str, Dict[str, str]]) -> Tuple[str, bo
 
     # Build exiftool command for JPEG
     jpeg_cmd = [
-        exiftool_path, "-P", "-overwrite_original",
+        exiftool_path,
+        "-P",
+        "-overwrite_original",
         f"-Make={metadata['cameraMake']}",
         f"-Model={metadata['cameraModel']}",
         f"-ImageDescription=film: {metadata['film']}",
-        f"-XMP:Description=film: {metadata['film']}"
+        f"-XMP:Description=film: {metadata['film']}",
     ]
 
     # Add lens info if available
-    if metadata['lensMake']:
+    if metadata["lensMake"]:
         jpeg_cmd.append(f"-LensMake={metadata['lensMake']}")
-    if metadata['lensModel']:
+    if metadata["lensModel"]:
         jpeg_cmd.append(f"-LensModel={metadata['lensModel']}")
 
     jpeg_cmd.extend(["--", jpeg_file])
@@ -228,16 +252,18 @@ def update_file_metadata(args: Tuple[str, str, Dict[str, str]]) -> Tuple[str, bo
 
         # Build exiftool command for XMP
         xmp_cmd = [
-            exiftool_path, "-P", "-overwrite_original",
+            exiftool_path,
+            "-P",
+            "-overwrite_original",
             f"-XMP:Make={metadata['cameraMake']}",
             f"-XMP:Model={metadata['cameraModel']}",
-            f"-XMP:Description=film: {metadata['film']}"
+            f"-XMP:Description=film: {metadata['film']}",
         ]
 
         # Add lens info if available
-        if metadata['lensMake']:
+        if metadata["lensMake"]:
             xmp_cmd.append(f"-XMP:LensMake={metadata['lensMake']}")
-        if metadata['lensModel']:
+        if metadata["lensModel"]:
             xmp_cmd.append(f"-XMP:LensModel={metadata['lensModel']}")
 
         xmp_cmd.extend(["--", xmp_file])
@@ -261,7 +287,6 @@ def count_xmp_files(jpeg_files: List[str]) -> int:
 
 
 def main():
-    """Main function."""
     if len(sys.argv) < 2:
         print("Usage: populate_exif_metadata.py <directory> [directory2] ...")
         sys.exit(1)
@@ -296,11 +321,15 @@ def main():
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Prepare arguments for each file
-            file_args = [(exiftool_path, jpeg_file, metadata) for jpeg_file in jpeg_files]
+            file_args = [
+                (exiftool_path, jpeg_file, metadata) for jpeg_file in jpeg_files
+            ]
 
             # Submit all tasks
-            future_to_file = {executor.submit(update_file_metadata, args): args[1]
-                            for args in file_args}
+            future_to_file = {
+                executor.submit(update_file_metadata, args): args[1]
+                for args in file_args
+            }
 
             # Collect results
             for future in concurrent.futures.as_completed(future_to_file):
