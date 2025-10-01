@@ -335,19 +335,23 @@ def main():
         error_count = len(error_files)
         total = success_count + error_count
 
+        dir_name = os.path.basename(os.path.normpath(directory))
+
+        msg_header = f"📂 {dir_name}\\n\\n"
+
         if error_count == 0:
             if xmp_count > 0:
-                message = f"✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 {xmp_count} XMP sidecar file(s) also updated."
+                message = f"{msg_header}✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 {xmp_count} XMP sidecar file(s) also updated."
             else:
-                message = f"✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 No XMP sidecar files found."
+                message = f"{msg_header}✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 No XMP sidecar files found."
 
             show_dialog(message, "ExifTool: Success")
         else:
             first_error = error_files[0] if error_files else ""
             if xmp_count > 0:
-                message = f"❌ {success_count} succeeded, {error_count} failed.\\n🚙 {xmp_count} XMP sidecar file(s) processed.\\nFirst error: {first_error}"
+                message = f"{msg_header}❌ {success_count} succeeded, {error_count} failed.\\n🚙 {xmp_count} XMP sidecar file(s) processed.\\nFirst error: {first_error}"
             else:
-                message = f"❌ {success_count} succeeded, {error_count} failed.\\n🚙 No XMP sidecar files found.\\nFirst error: {first_error}"
+                message = f"{msg_header}❌ {success_count} succeeded, {error_count} failed.\\n🚙 No XMP sidecar files found.\\nFirst error: {first_error}"
 
             show_dialog(message, "ExifTool: Completed with errors")
 
