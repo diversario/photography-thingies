@@ -26,6 +26,7 @@ import json
 import subprocess
 import shutil
 import tempfile
+import glob
 import concurrent.futures
 from pathlib import Path
 import pathlib
@@ -99,7 +100,7 @@ def parse_make_model(input_str: str) -> Tuple[str, str]:
     """Parse 'make model' input into separate make and model."""
     words = input_str.strip().split()
     if len(words) < 2:
-        show_dialog("Please enter both make and model (at least two words).", "Error")
+        show_dialog("⚠️ Please enter both make and model (at least two words).", "Error")
         sys.exit(1)
 
     make = words[0]
@@ -110,18 +111,18 @@ def parse_make_model(input_str: str) -> Tuple[str, str]:
 def get_metadata_from_user() -> Dict[str, str]:
     """Get metadata from user input dialogs."""
     # Get camera make and model
-    camera_input = get_input_dialog("Camera make & model:", "Camera")
+    camera_input = get_input_dialog("📸 Camera make & model:", "Camera")
     camera_make, camera_model = parse_make_model(camera_input)
 
     # Get lens make and model (optional)
-    lens_input = get_input_dialog("Lens make & model:", "Lens (optional)")
+    lens_input = get_input_dialog("🔎 Lens make & model:", "Lens (optional)")
     lens_make = lens_model = ""
 
     if lens_input.strip():
         lens_make, lens_model = parse_make_model(lens_input)
 
     # Get film
-    film = get_input_dialog("Film:", "Film")
+    film = get_input_dialog("🎞️ Film:", "Film")
 
     return {
         "cameraMake": camera_make,
@@ -138,7 +139,7 @@ def load_or_create_metadata(directory: str) -> Dict[str, str]:
 
     if not os.path.isfile(metadata_file):
         show_dialog(
-            "Directory has no metadata.json file.\\n\\nEnter values to create one.",
+            "❗️ Directory has no metadata.json file.\\n\\nEnter values to create one.",
             "Error",
         )
         metadata = get_metadata_from_user()
@@ -153,7 +154,7 @@ def load_or_create_metadata(directory: str) -> Dict[str, str]:
         with open(metadata_file, "r") as f:
             metadata = json.load(f)
     except (json.JSONDecodeError, IOError):
-        show_dialog(f"Invalid metadata.json in {directory}", "Error")
+        show_dialog(f"❌ Invalid metadata.json in {directory}", "Error")
         return {}
 
     # Validate required fields
@@ -197,18 +198,8 @@ def find_xmp_sidecars(jpeg_file: str) -> List[str]:
     # get base filename without extension
     filename = base_name.split(".")[0]
 
-    # but also get all extensions, except the last one
-    extensions = base_name.split(".")[1:-1]
-
-    for ext in [".xmp", ".XMP"]:
-        xmp_file = pathlib.Path(dir_name) / (filename + ext)
-        if os.path.isfile(xmp_file):
-            xmp_files.append(xmp_file)
-
-        for extension in extensions:
-            xmp_file = pathlib.Path(dir_name) / (filename + f".{extension}" + ext)
-            if os.path.isfile(xmp_file):
-                xmp_files.append(xmp_file)
+    # find all xmp files for this base filename
+    xmp_files = glob.glob(os.path.join(dir_name, f"{filename}.*xmp")) + glob.glob(os.path.join(dir_name, f"{filename}.*XMP"))
 
     return xmp_files
 
@@ -253,7 +244,7 @@ def update_file_metadata(args: Tuple[str, str, Dict[str, str]]) -> Tuple[str, bo
         # Build exiftool command for XMP
         xmp_cmd = [
             exiftool_path,
-            "-P",
+            # "-P",
             "-overwrite_original",
             f"-XMP:Make={metadata['cameraMake']}",
             f"-XMP:Model={metadata['cameraModel']}",
@@ -296,7 +287,7 @@ def main():
 
     for directory in sys.argv[1:]:
         if not os.path.isdir(directory):
-            show_dialog(f"Directory not found: {directory}", "Error")
+            show_dialog(f"❌ Directory not found: {directory}", "Error")
             continue
 
         # Load or create metadata
@@ -308,7 +299,7 @@ def main():
         jpeg_files = find_jpeg_files(directory)
 
         if not jpeg_files:
-            show_dialog("No JPEG files found.", "Info")
+            show_dialog("ℹ️ No JPEG files found.", "Info")
             continue
 
         # Count XMP sidecar files
@@ -346,17 +337,17 @@ def main():
 
         if error_count == 0:
             if xmp_count > 0:
-                message = f"{success_count} of {total} JPEG file(s) updated.\\n{xmp_count} XMP sidecar file(s) also updated."
+                message = f"✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 {xmp_count} XMP sidecar file(s) also updated."
             else:
-                message = f"{success_count} of {total} JPEG file(s) updated.\\nNo XMP sidecar files found."
+                message = f"✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 No XMP sidecar files found."
 
             show_dialog(message, "ExifTool: Success")
         else:
             first_error = error_files[0] if error_files else ""
             if xmp_count > 0:
-                message = f"{success_count} succeeded, {error_count} failed.\\n{xmp_count} XMP sidecar file(s) processed.\\nFirst error: {first_error}"
+                message = f"❌ {success_count} succeeded, {error_count} failed.\\n🚙 {xmp_count} XMP sidecar file(s) processed.\\nFirst error: {first_error}"
             else:
-                message = f"{success_count} succeeded, {error_count} failed.\\nNo XMP sidecar files found.\\nFirst error: {first_error}"
+                message = f"❌ {success_count} succeeded, {error_count} failed.\\n🚙 No XMP sidecar files found.\\nFirst error: {first_error}"
 
             show_dialog(message, "ExifTool: Completed with errors")
 
