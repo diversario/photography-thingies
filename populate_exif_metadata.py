@@ -77,6 +77,19 @@ def show_alert(title: str, message: str):
         pass
 
 
+def show_toast(title: str, message: str):
+    """Show a macOS notification center toast using osascript."""
+    cmd = [
+        "osascript", "-e",
+        f'display notification "{message}" with title "{title}"'
+    ]
+
+    try:
+        subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError:
+        pass
+
+
 def find_exiftool() -> str:
     """Find exiftool executable."""
     # Add common paths for Homebrew
@@ -285,6 +298,9 @@ def main():
     # Find exiftool
     exiftool_path = find_exiftool()
 
+    # show a notification center toast notifying the user that processing is starting
+    show_toast("⚡️ Processing started", "✏️ Updating metadata...")
+
     for directory in sys.argv[1:]:
         if not os.path.isdir(directory):
             show_dialog(f"❌ Directory not found: {directory}", "Error")
@@ -340,20 +356,31 @@ def main():
         msg_header = f"📂 {dir_name}\\n\\n"
 
         if error_count == 0:
-            if xmp_count > 0:
-                message = f"{msg_header}✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 {xmp_count} XMP sidecar file(s) also updated."
-            else:
-                message = f"{msg_header}✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 No XMP sidecar files found."
+            # if xmp_count > 0:
+            #     message = f"{msg_header}✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 {xmp_count} XMP sidecar file(s) also updated."
+            # else:
+            #     message = f"{msg_header}✅ {success_count} of {total} JPEG file(s) updated.\\n🚙 No XMP sidecar files found."
 
-            show_dialog(message, "ExifTool: Success")
+            # show_dialog(message, "ExifTool: Success")
+
+            if xmp_count > 0:
+                message = f"{msg_header}✅ {success_count}/{total} JPEGs, {xmp_count} XMPs"
+            else:
+                message = f"{msg_header}✅ {success_count}/{total} JPEGs, No XMPs"
+
+            show_toast("Processing completed", message)
         else:
             first_error = error_files[0] if error_files else ""
-            if xmp_count > 0:
-                message = f"{msg_header}❌ {success_count} succeeded, {error_count} failed.\\n🚙 {xmp_count} XMP sidecar file(s) processed.\\nFirst error: {first_error}"
-            else:
-                message = f"{msg_header}❌ {success_count} succeeded, {error_count} failed.\\n🚙 No XMP sidecar files found.\\nFirst error: {first_error}"
+            # if xmp_count > 0:
+            #     message = f"{msg_header}❌ {success_count} succeeded, {error_count} failed.\\n🚙 {xmp_count} XMP sidecar file(s) processed.\\nFirst error: {first_error}"
+            # else:
+            #     message = f"{msg_header}❌ {success_count} succeeded, {error_count} failed.\\n🚙 No XMP sidecar files found.\\nFirst error: {first_error}"
 
-            show_dialog(message, "ExifTool: Completed with errors")
+            # show_dialog(message, "ExifTool: Completed with errors")
+            if xmp_count > 0:
+                message = f"{msg_header}✅ {success_count}, ❌ {error_count} JPEGs, ✅ {xmp_count} XMPs.\\nFirst error: {first_error}"
+            else:
+                message = f"{msg_header}✅ {success_count}, ❌ {error_count} JPEGs, no XMPs.\\nFirst error: {first_error}"
 
 
 if __name__ == "__main__":
