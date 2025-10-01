@@ -154,8 +154,9 @@ def load_or_create_metadata(directory: str) -> Dict[str, str]:
     metadata_file = os.path.join(directory, "metadata.json")
 
     if not os.path.isfile(metadata_file):
+        dir_name = os.path.basename(os.path.normpath(directory))
         show_dialog(
-            "❗️ Directory has no metadata.json file.\\n\\nEnter values to create one.",
+            f"❗️ Directory '{dir_name}' has no metadata.json file.\\n\\nEnter values to create one.",
             "Error",
         )
         metadata = get_metadata_from_user()
@@ -301,13 +302,15 @@ def main():
     # Find exiftool
     exiftool_path = find_exiftool()
 
-    # show a notification center toast notifying the user that processing is starting
-    show_toast("⚡️ Processing started", message="✏️ Updating metadata...")
-
     for directory in sys.argv[1:]:
         if not os.path.isdir(directory):
             show_dialog(f"❌ Directory not found: {directory}", "Error")
             continue
+
+        dir_name = os.path.basename(os.path.normpath(directory))
+
+        # show a notification center toast notifying the user that processing is starting
+        show_toast("⚡️ Processing started", message=f"✏️ Updating metadata in {dir_name}...")
 
         # Load or create metadata
         metadata = load_or_create_metadata(directory)
@@ -353,8 +356,6 @@ def main():
         success_count = len(success_files)
         error_count = len(error_files)
         total = success_count + error_count
-
-        dir_name = os.path.basename(os.path.normpath(directory))
 
         msg_header = f"📂 {dir_name}\\n\\n"
 
