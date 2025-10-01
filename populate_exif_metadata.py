@@ -77,11 +77,14 @@ def show_alert(title: str, message: str):
         pass
 
 
-def show_toast(title: str, message: str):
+def show_toast(title: str, subtitle: str = "", message: str = ""):
     """Show a macOS notification center toast using osascript."""
     cmd = [
-        "osascript", "-e",
-        f'display notification "{message}" with title "{title}"'
+        "osascript",
+        "-e",
+        f'display notification "{message}"\
+            with title "{title}"\
+                subtitle "{subtitle}"',
     ]
 
     try:
@@ -299,7 +302,7 @@ def main():
     exiftool_path = find_exiftool()
 
     # show a notification center toast notifying the user that processing is starting
-    show_toast("⚡️ Processing started", "✏️ Updating metadata...")
+    show_toast("⚡️ Processing started", message="✏️ Updating metadata...")
 
     for directory in sys.argv[1:]:
         if not os.path.isdir(directory):
@@ -368,7 +371,7 @@ def main():
             else:
                 message = f"{msg_header}✅ {success_count}/{total} JPEGs, No XMPs"
 
-            show_toast("Processing completed", message)
+            show_toast("Processing completed", message=message)
         else:
             first_error = error_files[0] if error_files else ""
             # if xmp_count > 0:
