@@ -150,8 +150,17 @@ def get_metadata_from_user() -> Dict[str, str]:
 
 
 def load_or_create_metadata(directory: str) -> Dict[str, str]:
-    """Load metadata from JSON file or create it from user input."""
+    """Load metadata from JSON file or create it from user input.
+       The metadata.json can be located in the `directory`, or in `directory/negatives`.
+       Find the first one that exists and use that. If neither exists, prompt user to create one.
+    """
     metadata_file = os.path.join(directory, "metadata.json")
+
+    if not os.path.isfile(metadata_file):
+        # Check for negatives subdirectory
+        negatives_dir = os.path.join(directory, "negatives")
+        if os.path.isdir(negatives_dir):
+            metadata_file = os.path.join(negatives_dir, "metadata.json")
 
     if not os.path.isfile(metadata_file):
         dir_name = os.path.basename(os.path.normpath(directory))
