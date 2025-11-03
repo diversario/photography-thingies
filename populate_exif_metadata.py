@@ -214,6 +214,20 @@ def find_jpeg_files(directory: str) -> List[str]:
     return files
 
 
+def find_image_files(directory: str) -> List[str]:
+    """Find all image files in directory and all subdirectories."""
+    image_extensions = [".jpg", ".JPG", ".jpeg", ".JPEG", ".CR3", ".cr3"]
+    files = []
+
+    for root, dirs, filenames in os.walk(directory):
+        for filename in filenames:
+            if any(filename.endswith(ext) for ext in image_extensions):
+                filepath = os.path.join(root, filename)
+                files.append(filepath)
+
+    return files
+
+
 def find_xmp_sidecars(jpeg_file: str) -> List[str]:
     """Find corresponding XMP sidecar files for a JPEG."""
     xmp_files = []
@@ -231,37 +245,39 @@ def find_xmp_sidecars(jpeg_file: str) -> List[str]:
 
 
 def update_file_metadata(args: Tuple[str, str, Dict[str, str]]) -> Tuple[str, bool]:
-    """Update metadata for a single file (JPEG + optional XMP)."""
-    exiftool_path, jpeg_file, metadata = args
+    """Update metadata for a single file (JPEG, RAW + optional XMP)."""
+    exiftool_path, image_file, metadata = args
+
+    jpeg_success = True
 
     # Build exiftool command for JPEG
-    jpeg_cmd = [
-        exiftool_path,
-        "-P",
-        "-overwrite_original",
-        f"-Make={metadata['cameraMake']}",
-        f"-Model={metadata['cameraModel']}",
-        f"-ImageDescription=film: {metadata['film']}",
-        f"-XMP:Description=film: {metadata['film']}",
-    ]
+    if image_file.lower().endswith((".jpg", ".jpeg")):
+        jpeg_cmd = [
+          exiftool_path,
+          "-P",
+          "-overwrite_original",
+          f"-Make={metadata['cameraMake']}",
+          f"-Model={metadata['cameraModel']}",
+          f"-ImageDescription=film: {metadata['film']}",
+          f"-XMP:Description=film: {metadata['film']}",
+      ]
 
-    # Add lens info if available
-    if metadata["lensMake"]:
-        jpeg_cmd.append(f"-LensMake={metadata['lensMake']}")
-    if metadata["lensModel"]:
-        jpeg_cmd.append(f"-LensModel={metadata['lensModel']}")
+        # Add lens info if available
+        if metadata["lensMake"]:
+            jpeg_cmd.append(f"-LensMake={metadata['lensMake']}")
+        if metadata["lensModel"]:
+            jpeg_cmd.append(f"-LensModel={metadata['lensModel']}")
 
-    jpeg_cmd.extend(["--", jpeg_file])
+        jpeg_cmd.extend(["--", image_file])
 
-    # Update JPEG file
-    try:
-        subprocess.run(jpeg_cmd, capture_output=True, check=True)
-        jpeg_success = True
-    except subprocess.CalledProcessError:
-        jpeg_success = False
+        # Update JPEG file
+        try:
+            subprocess.run(jpeg_cmd, capture_output=True, check=True)
+        except subprocess.CalledProcessError:
+            jpeg_success = False
 
     # Check for XMP sidecar file
-    xmp_files = find_xmp_sidecars(jpeg_file)
+    xmp_files = find_xmp_sidecars(image_file)
     xmp_success = True  # Default to true since XMP is optional
 
     for xmp_file in xmp_files:
@@ -290,7 +306,7 @@ def update_file_metadata(args: Tuple[str, str, Dict[str, str]]) -> Tuple[str, bo
         except subprocess.CalledProcessError:
             xmp_success = False
 
-    return jpeg_file, jpeg_success and xmp_success
+    return image_file, jpeg_success and xmp_success
 
 
 def count_xmp_files(jpeg_files: List[str]) -> int:
@@ -326,15 +342,15 @@ def main():
         if not metadata:
             continue
 
-        # Find JPEG files
-        jpeg_files = find_jpeg_files(directory)
+        # Find image files
+        image_files = find_image_files(directory)
 
-        if not jpeg_files:
-            show_dialog("ℹ️ No JPEG files found.", "Info")
+        if not image_files:
+            show_dialog("ℹ️ No image files found.", "Info")
             continue
 
         # Count XMP sidecar files
-        xmp_count = count_xmp_files(jpeg_files)
+        xmp_count = count_xmp_files(image_files)
 
         # Process files in parallel
         max_workers = 20
@@ -344,7 +360,7 @@ def main():
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Prepare arguments for each file
             file_args = [
-                (exiftool_path, jpeg_file, metadata) for jpeg_file in jpeg_files
+                (exiftool_path, image_file, metadata) for image_file in image_files
             ]
 
             # Submit all tasks
@@ -377,9 +393,9 @@ def main():
             # show_dialog(message, "ExifTool: Success")
 
             if xmp_count > 0:
-                message = f"{msg_header}✅ {success_count}/{total} JPEGs, {xmp_count} XMPs"
+                message = f"{msg_header}✅ {success_count}/{total} images, {xmp_count} XMPs"
             else:
-                message = f"{msg_header}✅ {success_count}/{total} JPEGs, No XMPs"
+                message = f"{msg_header}✅ {success_count}/{total} images, No XMPs"
 
             show_toast("Processing completed", message=message)
         else:
