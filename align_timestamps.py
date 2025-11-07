@@ -57,7 +57,7 @@ def find_exiftool() -> str:
 
 def find_image_files(directory: str) -> List[str]:
     """Find all image files in directory and all subdirectories."""
-    image_extensions = [".jpg", ".JPG", ".jpeg", ".JPEG"]
+    image_extensions = [".jpg", ".JPG", ".jpeg", ".JPEG", ".cr3", ".CR3"]
     files = []
 
     for root, dirs, filenames in os.walk(directory):
