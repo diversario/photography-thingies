@@ -84,6 +84,60 @@ def get_thumb_filenames(thumbs_dir):
     return filenames
 
 
+VALID_EXTENSIONS = {'.jpeg', '.jpg', '.JPEG', '.JPG'}
+
+# Pattern to match: basename optionally followed by separator + number
+# e.g., "IMG_1234" matches "IMG_1234", "IMG_1234 1", "IMG_1234_2", "IMG_1234-3"
+SUFFIX_PATTERN = re.compile(r'^(.+?)[ _-]\d+$')
+
+
+def build_basename_map(filenames):
+    """Build a map of lowercase basenames to original filenames."""
+    basenames_to_find = {}
+    for filename in filenames:
+        base, ext = os.path.splitext(filename)
+        basenames_to_find[base.lower()] = filename
+    return basenames_to_find
+
+
+def matches_basename(file_base, search_bases):
+    """Check if file_base matches any search base, with optional suffix."""
+    file_base_lower = file_base.lower()
+
+    # Check for exact match first
+    if file_base_lower in search_bases:
+        return search_bases[file_base_lower]
+
+    # Check for match with separator + number suffix
+    match = SUFFIX_PATTERN.match(file_base_lower)
+    if match:
+        base_without_suffix = match.group(1)
+        if base_without_suffix in search_bases:
+            return search_bases[base_without_suffix]
+
+    return None
+
+
+def get_filtered_directories(originals_dir, date_start, date_end, verbose):
+    """Filter top-level directories based on date range."""
+    try:
+        top_level_entries = os.listdir(originals_dir)
+    except OSError as e:
+        print(f"Error reading originals directory: {e}")
+        return []
+
+    filtered_dirs = []
+    for entry in top_level_entries:
+        entry_path = os.path.join(originals_dir, entry)
+        if os.path.isdir(entry_path):
+            if is_dir_in_date_range(entry, date_start, date_end):
+                filtered_dirs.append(entry_path)
+            elif verbose:
+                print(f"Skipping directory (date filter): {entry}")
+
+    return filtered_dirs
+
+
 def find_originals(originals_dir, filenames, date_start, date_end, verbose):
     """
     Search the originals directory for files matching the given filenames.
@@ -95,39 +149,18 @@ def find_originals(originals_dir, filenames, date_start, date_end, verbose):
     Copy all files whose base name matches the searched name and is followed by some
     sort of a separator (space, underscore, dash) plus a number.
 
-    Returns a dict mapping filename -> full path to the original file.
+    Returns a dict mapping filename -> list of full paths to the original files.
     """
     found = {}
-
-    # Build a set of base names (without extension) to search for
-    VALID_EXTENSIONS = {'.jpeg', '.jpg', '.JPEG', '.JPG'}
-    basenames_to_find = {}
-    for filename in filenames:
-        base, ext = os.path.splitext(filename)
-        basenames_to_find[base.lower()] = filename  # Map lowercase basename to original filename
-
-    # First, filter top-level directories based on date filters
-    try:
-        top_level_entries = os.listdir(originals_dir)
-    except OSError as e:
-        print(f"Error reading originals directory: {e}")
-        return found
-
-    filtered_dirs = []
-    for entry in top_level_entries:
-        entry_path = os.path.join(originals_dir, entry)
-        if os.path.isdir(entry_path):
-            if is_dir_in_date_range(entry, date_start, date_end):
-                filtered_dirs.append(entry_path)
-            elif verbose:
-                print(f"Skipping directory (date filter): {entry}")
+    basenames_to_find = build_basename_map(filenames)
+    filtered_dirs = get_filtered_directories(originals_dir, date_start, date_end, verbose)
 
     if verbose:
         print(f"Searching in {len(filtered_dirs)} directories after applying date filters:")
         for d in filtered_dirs:
             print(f"  {d}")
 
-    # Now search for files in the filtered directories
+    # Search for files in the filtered directories
     for dir_path in filtered_dirs:
         for root, dirs, files in os.walk(dir_path):
             for filename in files:
@@ -135,15 +168,17 @@ def find_originals(originals_dir, filenames, date_start, date_end, verbose):
                     print(f"Checking file: {os.path.join(root, filename)}")
 
                 base, ext = os.path.splitext(filename)
-                base_lower = base.lower()
 
-                # Check if this file matches a thumb basename and has a valid extension
-                if base_lower in basenames_to_find and ext in VALID_EXTENSIONS:
-                    original_thumb_name = basenames_to_find[base_lower]
-                    if original_thumb_name not in found:
-                        found[original_thumb_name] = os.path.join(root, filename)
+                # Check if this file has a valid extension and matches a thumb basename
+                if ext in VALID_EXTENSIONS:
+                    original_thumb_name = matches_basename(base, basenames_to_find)
+                    if original_thumb_name:
+                        file_path = os.path.join(root, filename)
+                        if original_thumb_name not in found:
+                            found[original_thumb_name] = []
+                        found[original_thumb_name].append(file_path)
                         if verbose:
-                            print(f"Found original: {filename} at {found[original_thumb_name]}")
+                            print(f"Found original: {filename} at {file_path}")
 
     return found
 
@@ -228,30 +263,34 @@ def main():
     copied_count = 0
     renamed_files = []
 
-    for original_filename, original_path in found_originals.items():
-        # Get unique destination filename
-        dest_filename, was_renamed = get_unique_dest_path(dest_dir, original_filename)
-        dest_path = os.path.join(dest_dir, dest_filename)
+    for original_filename, original_paths in found_originals.items():
+        for original_path in original_paths:
+            # Use the actual filename from the original path
+            actual_filename = os.path.basename(original_path)
 
-        if was_renamed:
-            renamed_files.append((original_filename, dest_filename))
-            print(f"Filename conflict: {original_filename} -> {dest_filename}")
+            # Get unique destination filename
+            dest_filename, was_renamed = get_unique_dest_path(dest_dir, actual_filename)
+            dest_path = os.path.join(dest_dir, dest_filename)
 
-        # Copy the original file
-        copy_file(original_path, dest_path, args.dry_run, args.verbose)
-        copied_count += 1
+            if was_renamed:
+                renamed_files.append((actual_filename, dest_filename))
+                print(f"Filename conflict: {actual_filename} -> {dest_filename}")
 
-        # Handle .xmp file if requested
-        # TODO: this doesn't always work because some files are like $name.$ext.xmp
-        # and others are like $name.xmp
-        if args.copy_xmp:
-            xmp_src = original_path + ".xmp"
-            if os.path.exists(xmp_src):
-                xmp_dest_filename = dest_filename + ".xmp"
-                xmp_dest_path = os.path.join(dest_dir, xmp_dest_filename)
-                copy_file(xmp_src, xmp_dest_path, args.dry_run, args.verbose)
-            elif args.verbose:
-                print(f"No .xmp file found for: {original_filename}")
+            # Copy the original file
+            copy_file(original_path, dest_path, args.dry_run, args.verbose)
+            copied_count += 1
+
+            # Handle .xmp file if requested
+            # TODO: this doesn't always work because some files are like $name.$ext.xmp
+            # and others are like $name.xmp
+            if args.copy_xmp:
+                xmp_src = original_path + ".xmp"
+                if os.path.exists(xmp_src):
+                    xmp_dest_filename = dest_filename + ".xmp"
+                    xmp_dest_path = os.path.join(dest_dir, xmp_dest_filename)
+                    copy_file(xmp_src, xmp_dest_path, args.dry_run, args.verbose)
+                elif args.verbose:
+                    print(f"No .xmp file found for: {actual_filename}")
 
     # Summary
     action = "Would copy" if args.dry_run else "Copied"
