@@ -13,8 +13,8 @@
 #   -n : dry run, do not actually copy files
 #   -v : verbose, print more information about what is being done
 #   --copy-xmp : also copy .xmp files if they exist for the original files
-#   --before <YYYY-MM-DD> : only consider files in the originals directory whose name starts before the given date (example dir name `YYYY-MM-DD Some place`)
-#   --after <YYYY-MM-DD> : only consider files in the originals directory whose name starts after the given date (example dir name `YYYY-MM-DD Some place`)
+#   --date-start <YYYY-MM-DD> : only consider files in the originals directory whose name starts on or after the given date (example dir name `YYYY-MM-DD Some place`)
+#   --date-end <YYYY-MM-DD> : only consider files in the originals directory whose name starts on or before the given date (example dir name `YYYY-MM-DD Some place`)
 
 import argparse
 import os
@@ -33,8 +33,8 @@ def parse_args():
     parser.add_argument("-n", "--dry-run", action="store_true", default=True, help="Dry run, do not actually copy files")
     parser.add_argument("-v", "--verbose", action="store_true", default=True, help="Verbose, print more information")
     parser.add_argument("--copy-xmp", action="store_true", default=False, help="Also copy .xmp files if they exist")
-    parser.add_argument("--before", metavar="YYYY-MM-DD", help="Only consider originals directories before this date")
-    parser.add_argument("--after", metavar="YYYY-MM-DD", help="Only consider originals directories after this date")
+    parser.add_argument("--date-start", metavar="YYYY-MM-DD", help="Only consider originals directories on or after this date (inclusive)")
+    parser.add_argument("--date-end", metavar="YYYY-MM-DD", help="Only consider originals directories on or before this date (inclusive)")
     return parser.parse_args()
 
 
@@ -54,16 +54,16 @@ def extract_date_from_dirname(dirname):
     return None
 
 
-def is_dir_in_date_range(dirname, before_date, after_date):
-    """Check if directory falls within the specified date range."""
+def is_dir_in_date_range(dirname, date_start, date_end):
+    """Check if directory falls within the specified date range (inclusive)."""
     dir_date = extract_date_from_dirname(dirname)
     if dir_date is None:
-        # If we can't parse a date from the directory name, include it
+        # If we can't parse a date from the directory name, exclude it
         return False
 
-    if before_date and dir_date >= before_date:
+    if date_start and dir_date < date_start:
         return False
-    if after_date and dir_date <= after_date:
+    if date_end and dir_date > date_end:
         return False
 
     return True
@@ -83,7 +83,7 @@ def get_thumb_filenames(thumbs_dir):
     return filenames
 
 
-def find_originals(originals_dir, filenames, before_date, after_date, verbose):
+def find_originals(originals_dir, filenames, date_start, date_end, verbose):
     """
     Search the originals directory for files matching the given filenames.
     Returns a dict mapping filename -> full path to the original file.
@@ -101,18 +101,23 @@ def find_originals(originals_dir, filenames, before_date, after_date, verbose):
     for entry in top_level_entries:
         entry_path = os.path.join(originals_dir, entry)
         if os.path.isdir(entry_path):
-            if is_dir_in_date_range(entry, before_date, after_date):
+            if is_dir_in_date_range(entry, date_start, date_end):
                 filtered_dirs.append(entry_path)
             elif verbose:
                 print(f"Skipping directory (date filter): {entry}")
 
     if verbose:
-        print(f"Searching in {len(filtered_dirs)} directories after applying date filters")
+        print(f"Searching in {len(filtered_dirs)} directories after applying date filters:")
+        for d in filtered_dirs:
+            print(f"  {d}")
 
     # Now search for files in the filtered directories
     for dir_path in filtered_dirs:
         for root, dirs, files in os.walk(dir_path):
             for filename in files:
+                if verbose:
+                    print(f"Checking file: {os.path.join(root, filename)}")
+
                 if filename in filenames and filename not in found:
                     found[filename] = os.path.join(root, filename)
                     if verbose:
@@ -169,14 +174,14 @@ def main():
         return 1
 
     # Parse date filters
-    before_date = parse_date(args.before) if args.before else None
-    after_date = parse_date(args.after) if args.after else None
+    date_start = parse_date(args.date_start) if args.date_start else None
+    date_end = parse_date(args.date_end) if args.date_end else None
 
-    if args.before and not before_date:
-        print(f"Error: Invalid date format for --before: {args.before}")
+    if args.date_start and not date_start:
+        print(f"Error: Invalid date format for --date-start: {args.date_start}")
         return 1
-    if args.after and not after_date:
-        print(f"Error: Invalid date format for --after: {args.after}")
+    if args.date_end and not date_end:
+        print(f"Error: Invalid date format for --date-end: {args.date_end}")
         return 1
 
     # Get thumb filenames
@@ -189,7 +194,7 @@ def main():
         print(f"Found {len(thumb_filenames)} files in thumbs directory")
 
     # Find originals
-    found_originals = find_originals(originals_dir, thumb_filenames, before_date, after_date, args.verbose)
+    found_originals = find_originals(originals_dir, thumb_filenames, date_start, date_end, args.verbose)
 
     if not found_originals:
         print("No matching original files found.")
