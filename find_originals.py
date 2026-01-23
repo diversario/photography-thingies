@@ -153,7 +153,11 @@ def find_originals(originals_dir, filenames, date_start, date_end, verbose):
     """
     found = {}
     basenames_to_find = build_basename_map(filenames)
-    filtered_dirs = get_filtered_directories(originals_dir, date_start, date_end, verbose)
+
+    if date_start is None and date_end is None:
+        filtered_dirs = [originals_dir]
+    else:
+        filtered_dirs = get_filtered_directories(originals_dir, date_start, date_end, verbose)
 
     if verbose:
         print(f"Searching in {len(filtered_dirs)} directories after applying date filters:")
