@@ -86,34 +86,33 @@ def get_thumb_filenames(thumbs_dir):
 
 VALID_EXTENSIONS = {'.jpeg', '.jpg', '.JPEG', '.JPG'}
 
-# Pattern to match: basename optionally followed by separator + number
-# e.g., "IMG_1234" matches "IMG_1234", "IMG_1234 1", "IMG_1234_2", "IMG_1234-3"
-SUFFIX_PATTERN = re.compile(r'^(.+?)[ _-]\d+$')
-
 
 def build_basename_map(filenames):
-    """Build a map of lowercase basenames to original filenames."""
+    """Build a map of lowercase basenames to original filenames, with compiled regex patterns."""
     basenames_to_find = {}
     for filename in filenames:
         base, ext = os.path.splitext(filename)
-        basenames_to_find[base.lower()] = filename
+        base_lower = base.lower()
+        # Pattern: exact base name followed by word boundary, then anything, then end
+        # This matches: IMG_1234, IMG_1234.CR3, IMG_1234 1, IMG_1234_2.CR3, etc.
+        # But not: IMG_12345 (name continues without word boundary)
+        pattern = re.compile(r'^' + re.escape(base_lower) + r'\b', re.IGNORECASE)
+        basenames_to_find[base_lower] = (filename, pattern)
     return basenames_to_find
 
 
 def matches_basename(file_base, search_bases):
-    """Check if file_base matches any search base, with optional suffix."""
+    """
+    Check if file_base starts with any search base name followed by a word boundary.
+    The searched name must be matched fully (e.g., ^name\b).
+
+    Returns the original thumb filename if matched, None otherwise.
+    """
     file_base_lower = file_base.lower()
 
-    # Check for exact match first
-    if file_base_lower in search_bases:
-        return search_bases[file_base_lower]
-
-    # Check for match with separator + number suffix
-    match = SUFFIX_PATTERN.match(file_base_lower)
-    if match:
-        base_without_suffix = match.group(1)
-        if base_without_suffix in search_bases:
-            return search_bases[base_without_suffix]
+    for base_lower, (original_filename, pattern) in search_bases.items():
+        if pattern.match(file_base_lower):
+            return original_filename
 
     return None
 
@@ -146,8 +145,12 @@ def find_originals(originals_dir, filenames, date_start, date_end, verbose):
       - JPEG, JPG, jpeg, jpg
 
     The original file name may have a suffix after it, such as `$name $number.jpg`.
+
+    Additionally, there may be a .CR3 extension _before_ the .jpg extension, e.g., `$name.CR3.jpg`.
+
     Copy all files whose base name matches the searched name and is followed by some
-    sort of a separator (space, underscore, dash) plus a number.
+    sort of a separator (space, underscore, dash) plus a number, and potentially an extra
+    extension like .CR3 before the final extension.
 
     Returns a dict mapping filename -> list of full paths to the original files.
     """
