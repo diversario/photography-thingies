@@ -1,6 +1,6 @@
 #!/opt/homebrew/bin/python3
 
-# Arguments: [options] <copies directory> <originals directory>
+# Arguments: --copies <copies directory> --originals <originals directory> [options]
 
 # Given a path to `copies directory`, read all filenames in the `thumbs/` subdirectory
 # there. Find the files with the same names in the `originals directory` and copy them
@@ -28,9 +28,10 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Find original files matching thumbs and copy them to an originals directory."
     )
-    parser.add_argument("copies_directory", help="Path to the copies directory containing thumbs/")
-    parser.add_argument("originals_directory", help="Path to the originals directory to search")
-    parser.add_argument("-n", "--dry-run", action="store_true", default=True, help="Dry run, do not actually copy files")
+    parser.add_argument("--copies", required=True, help="Path to the copies directory containing thumbs/")
+    parser.add_argument("--originals", required=True, help="Path to the originals directory to search")
+    parser.add_argument("-n", "--dry-run", action="store_true", default=True, help="Dry run, do not actually copy files (default)")
+    parser.add_argument("--no-dry-run", action="store_false", dest="dry_run", help="Actually copy files")
     parser.add_argument("-v", "--verbose", action="store_true", default=True, help="Verbose, print more information")
     parser.add_argument("--copy-xmp", action="store_true", default=False, help="Also copy .xmp files if they exist")
     parser.add_argument("--date-start", metavar="YYYY-MM-DD", help="Only consider originals directories on or after this date (inclusive)")
@@ -86,9 +87,24 @@ def get_thumb_filenames(thumbs_dir):
 def find_originals(originals_dir, filenames, date_start, date_end, verbose):
     """
     Search the originals directory for files matching the given filenames.
+    The original file may have a different extension, so look for files with the
+    same name and any of these extensions:
+      - JPEG, JPG, jpeg, jpg
+
+    The original file name may have a suffix after it, such as `$name $number.jpg`.
+    Copy all files whose base name matches the searched name and is followed by some
+    sort of a separator (space, underscore, dash) plus a number.
+
     Returns a dict mapping filename -> full path to the original file.
     """
     found = {}
+
+    # Build a set of base names (without extension) to search for
+    VALID_EXTENSIONS = {'.jpeg', '.jpg', '.JPEG', '.JPG'}
+    basenames_to_find = {}
+    for filename in filenames:
+        base, ext = os.path.splitext(filename)
+        basenames_to_find[base.lower()] = filename  # Map lowercase basename to original filename
 
     # First, filter top-level directories based on date filters
     try:
@@ -118,10 +134,16 @@ def find_originals(originals_dir, filenames, date_start, date_end, verbose):
                 if verbose:
                     print(f"Checking file: {os.path.join(root, filename)}")
 
-                if filename in filenames and filename not in found:
-                    found[filename] = os.path.join(root, filename)
-                    if verbose:
-                        print(f"Found original: {filename} at {found[filename]}")
+                base, ext = os.path.splitext(filename)
+                base_lower = base.lower()
+
+                # Check if this file matches a thumb basename and has a valid extension
+                if base_lower in basenames_to_find and ext in VALID_EXTENSIONS:
+                    original_thumb_name = basenames_to_find[base_lower]
+                    if original_thumb_name not in found:
+                        found[original_thumb_name] = os.path.join(root, filename)
+                        if verbose:
+                            print(f"Found original: {filename} at {found[original_thumb_name]}")
 
     return found
 
@@ -160,8 +182,8 @@ def copy_file(src, dest, dry_run, verbose):
 def main():
     args = parse_args()
 
-    copies_dir = os.path.abspath(args.copies_directory)
-    originals_dir = os.path.abspath(args.originals_directory)
+    copies_dir = os.path.abspath(args.copies)
+    originals_dir = os.path.abspath(args.originals)
     thumbs_dir = os.path.join(copies_dir, "thumbs")
     dest_dir = os.path.join(copies_dir, "originals")
 
