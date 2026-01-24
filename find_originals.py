@@ -20,6 +20,7 @@ import argparse
 import os
 import shutil
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +34,7 @@ def parse_args():
     parser.add_argument("-n", "--dry-run", action="store_true", default=True, help="Dry run, do not actually copy files (default)")
     parser.add_argument("--no-dry-run", action="store_false", dest="dry_run", help="Actually copy files")
     parser.add_argument("-v", "--verbose", action="store_true", default=True, help="Verbose, print more information")
+    parser.add_argument("--no-missing-report", action="store_false", dest="missing_report", help="Do not report missing files")
     parser.add_argument("--copy-xmp", action="store_true", default=False, help="Also copy .xmp files if they exist")
     parser.add_argument("--date-start", metavar="YYYY-MM-DD", help="Only consider originals directories on or after this date (inclusive)")
     parser.add_argument("--date-end", metavar="YYYY-MM-DD", help="Only consider originals directories on or before this date (inclusive)")
@@ -170,6 +172,10 @@ def find_originals(originals_dir, filenames, date_start, date_end, verbose):
     # Search for files in the filtered directories
     for dir_path in filtered_dirs:
         for root, dirs, files in os.walk(dir_path):
+            # Skip directories named 'thumbs'
+            if os.path.basename(root) == 'thumbs':
+                continue
+
             for filename in files:
                 if verbose:
                     print(f"Checking file: {os.path.join(root, filename)}")
@@ -308,15 +314,18 @@ def main():
         for original, renamed in renamed_files:
             print(f"  {original} -> {renamed}")
 
-    # Report missing files
-    missing = thumb_filenames - set(found_originals.keys())
-    if missing:
-        print(f"\nCould not find originals for {len(missing)} files:")
-        for filename in sorted(missing):
-            print(f"  {filename}")
+    if args.missing_report:
+      # Report missing files
+      missing = thumb_filenames - set(found_originals.keys())
+      if missing:
+          print(f"\nCould not find originals for {len(missing)} files:")
+          for filename in sorted(missing):
+              print(f"  {filename}")
 
+    print("DEBUG: Exiting main()", flush=True)
+    sys.stdout.flush()
     return 0
 
 
 if __name__ == "__main__":
-    exit(main())
+    sys.exit(main())
