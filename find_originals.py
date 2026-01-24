@@ -52,9 +52,19 @@ def parse_date(date_str):
 
 def extract_date_from_dirname(dirname):
     """Extract date from directory name starting with YYYY-MM-DD."""
+    # Try to extract the first 10 characters as a date (YYYY-MM-DD)
+    if len(dirname) >= 10:
+        date_part = dirname[:10]
+        parsed = parse_date(date_part)
+        if parsed:
+            return parsed
+
+    # Fallback: split on space and strip non-alphanumeric chars
     parts = dirname.split(" ")
     if parts:
-        return parse_date(parts[0])
+        # Strip trailing punctuation like comma
+        date_str = parts[0].rstrip(',-_')
+        return parse_date(date_str)
     return None
 
 
@@ -89,25 +99,29 @@ def get_thumb_filenames(thumbs_dir):
 
 VALID_EXTENSIONS = {'.jpeg', '.jpg', '.JPEG', '.JPG'}
 
+# RAW extensions that may appear before the final JPEG extension (e.g., .CR3.jpg)
+RAW_EXTENSIONS = {'.cr3', '.cr2', '.nef', '.arw', '.raf', '.orf', '.dng', '.rw2'}
+
 
 def build_basename_map(filenames):
-    """Build a map of lowercase basenames to original filenames, with compiled regex patterns."""
+    """Build a map of lowercase basenames to original filenames."""
     basenames_to_find = {}
     for filename in filenames:
         base, ext = os.path.splitext(filename)
         base_lower = base.lower()
-        # Pattern: exact base name followed by word boundary, then anything, then end
-        # This matches: IMG_1234, IMG_1234.CR3, IMG_1234 1, IMG_1234_2.CR3, etc.
-        # But not: IMG_12345 (name continues without word boundary)
-        pattern = re.compile(r'^' + re.escape(base_lower) + r'\b', re.IGNORECASE)
-        basenames_to_find[base_lower] = (filename, pattern)
+        basenames_to_find[base_lower] = (filename, None)
     return basenames_to_find
 
 
 def matches_basename(file_base, search_bases):
     """
-    Check if file_base starts with any search base name followed by a word boundary.
-    The searched name must be matched fully (e.g., ^name\b).
+    Check if file_base matches any search base name.
+
+    Matching rules:
+    - Exact match (file_base == search_base)
+    - search_base followed by a space, dash, or underscore (e.g., "IMG_0002 1", "IMG_0002-edit")
+
+    Does NOT match if search_base is followed by a dot (to avoid IMG_0002 matching IMG_0002.CR3).
 
     When multiple patterns match, prefer the longest (most specific) match.
 
@@ -118,12 +132,41 @@ def matches_basename(file_base, search_bases):
     best_match = None
     best_match_len = 0
 
-    for base_lower, (original_filename, pattern) in search_bases.items():
-        if pattern.match(file_base_lower):
-            # Prefer longer matches (more specific)
+    # Debug: check if this specific file is being searched
+    if 'img_0002' in file_base_lower:
+        print(f"DEBUG: Checking file_base='{file_base_lower}'")
+        print(f"DEBUG: Looking for 'img_0002.cr3' in search_bases: {'img_0002.cr3' in search_bases}")
+
+    for base_lower, (original_filename, _) in search_bases.items():
+        # Check for exact match
+        if file_base_lower == base_lower:
+            if 'img_0002' in file_base_lower:
+                print(f"DEBUG: EXACT MATCH: '{file_base_lower}' == '{base_lower}' -> {original_filename}")
             if len(base_lower) > best_match_len:
                 best_match = original_filename
                 best_match_len = len(base_lower)
+            continue
+
+        # Check if file starts with base and is followed by allowed separator
+        if file_base_lower.startswith(base_lower):
+            remainder = file_base_lower[len(base_lower):]
+            if remainder:
+                # Allow: space, dash, underscore
+                if remainder[0] in ' -_':
+                    if len(base_lower) > best_match_len:
+                        best_match = original_filename
+                        best_match_len = len(base_lower)
+                # Allow: dot followed by RAW extension (e.g., .CR3)
+                elif remainder[0] == '.':
+                    # Check if remainder is a known RAW extension
+                    ext_part = remainder.split('.')[1] if '.' in remainder[1:] else remainder[1:]
+                    if f'.{ext_part.lower()}' in RAW_EXTENSIONS or f'.{remainder[1:].lower()}' in RAW_EXTENSIONS:
+                        if len(base_lower) > best_match_len:
+                            best_match = original_filename
+                            best_match_len = len(base_lower)
+
+    if 'img_0002' in file_base_lower:
+        print(f"DEBUG: best_match for '{file_base_lower}' = {best_match}")
 
     return best_match
 
