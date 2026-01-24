@@ -21,6 +21,7 @@ import os
 import shutil
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -108,15 +109,23 @@ def matches_basename(file_base, search_bases):
     Check if file_base starts with any search base name followed by a word boundary.
     The searched name must be matched fully (e.g., ^name\b).
 
+    When multiple patterns match, prefer the longest (most specific) match.
+
     Returns the original thumb filename if matched, None otherwise.
     """
     file_base_lower = file_base.lower()
 
+    best_match = None
+    best_match_len = 0
+
     for base_lower, (original_filename, pattern) in search_bases.items():
         if pattern.match(file_base_lower):
-            return original_filename
+            # Prefer longer matches (more specific)
+            if len(base_lower) > best_match_len:
+                best_match = original_filename
+                best_match_len = len(base_lower)
 
-    return None
+    return best_match
 
 
 def get_filtered_directories(originals_dir, date_start, date_end, verbose):
@@ -172,8 +181,8 @@ def find_originals(originals_dir, filenames, date_start, date_end, verbose):
     # Search for files in the filtered directories
     for dir_path in filtered_dirs:
         for root, dirs, files in os.walk(dir_path):
-            # Skip directories named 'thumbs'
-            if os.path.basename(root) == 'thumbs':
+            # Skip directories whose path contains 'Photobook' (case-insensitive)
+            if 'photobook/' in root.lower():
                 continue
 
             for filename in files:
@@ -272,8 +281,8 @@ def main():
 
     print(f"Found {len(found_originals)} matching original files out of {len(thumb_filenames)} thumbs")
 
-    # Copy files
-    copied_count = 0
+    # Build list of copy tasks (src, dest, is_xmp)
+    copy_tasks = []
     renamed_files = []
 
     for original_filename, original_paths in found_originals.items():
@@ -289,21 +298,31 @@ def main():
                 renamed_files.append((actual_filename, dest_filename))
                 print(f"Filename conflict: {actual_filename} -> {dest_filename}")
 
-            # Copy the original file
-            copy_file(original_path, dest_path, args.dry_run, args.verbose)
-            copied_count += 1
+            # Add main file copy task
+            copy_tasks.append((original_path, dest_path))
 
             # Handle .xmp file if requested
-            # TODO: this doesn't always work because some files are like $name.$ext.xmp
-            # and others are like $name.xmp
             if args.copy_xmp:
                 xmp_src = original_path + ".xmp"
                 if os.path.exists(xmp_src):
                     xmp_dest_filename = dest_filename + ".xmp"
                     xmp_dest_path = os.path.join(dest_dir, xmp_dest_filename)
-                    copy_file(xmp_src, xmp_dest_path, args.dry_run, args.verbose)
+                    copy_tasks.append((xmp_src, xmp_dest_path))
                 elif args.verbose:
                     print(f"No .xmp file found for: {actual_filename}")
+
+    # Copy files in parallel (2 workers)
+    copied_count = 0
+
+    def do_copy(task):
+        src, dest = task
+        copy_file(src, dest, args.dry_run, args.verbose)
+        return 1
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(do_copy, task) for task in copy_tasks]
+        for future in as_completed(futures):
+            copied_count += future.result()
 
     # Summary
     action = "Would copy" if args.dry_run else "Copied"
