@@ -17,6 +17,7 @@
 #   --date-end <YYYY-MM-DD> : only consider files in the originals directory whose name starts on or before the given date (example dir name `YYYY-MM-DD Some place`)
 
 import argparse
+import json
 import os
 import shutil
 import re
@@ -376,13 +377,39 @@ def main():
         for original, renamed in renamed_files:
             print(f"  {original} -> {renamed}")
 
-    if args.missing_report:
-      # Report missing files
-      missing = thumb_filenames - set(found_originals.keys())
-      if missing:
-          print(f"\nCould not find originals for {len(missing)} files:")
-          for filename in sorted(missing):
-              print(f"  {filename}")
+    # Build found map: filename -> parent directory relative to --originals
+    found_map = {}
+    for original_filename, original_paths in found_originals.items():
+        for original_path in original_paths:
+            actual_filename = os.path.basename(original_path)
+            # Get the parent directory relative to the originals_dir
+            parent_dir = os.path.dirname(original_path)
+            relative_parent = os.path.relpath(parent_dir, args.originals)
+            found_map[actual_filename] = relative_parent
+
+    # Build missing list
+    missing = sorted(thumb_filenames - set(found_originals.keys()))
+
+    # Write JSON files to originals/ destination directory
+    found_json_path = os.path.join(dest_dir, "found.json")
+    missing_json_path = os.path.join(dest_dir, "missing.json")
+
+    if not args.dry_run:
+        with open(found_json_path, "w") as f:
+            json.dump(found_map, f, indent=2, sort_keys=True)
+        print(f"Wrote {len(found_map)} entries to {found_json_path}")
+
+        with open(missing_json_path, "w") as f:
+            json.dump(missing, f, indent=2)
+        print(f"Wrote {len(missing)} entries to {missing_json_path}")
+    else:
+        print(f"\nWould write {len(found_map)} entries to {found_json_path}")
+        print(f"Would write {len(missing)} entries to {missing_json_path}")
+
+    if args.missing_report and missing:
+        print(f"\nCould not find originals for {len(missing)} files:")
+        for filename in sorted(missing):
+            print(f"  {filename}")
 
     print("DEBUG: Exiting main()", flush=True)
     sys.stdout.flush()
