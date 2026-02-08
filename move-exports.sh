@@ -1,6 +1,10 @@
 #!/bin/zsh
 
-echo $@ > /tmp/move-exports.log
+osascript -e 'display notification "Waiting 10 seconds before moving exports..." with title "Move Exports"'
+
+sleep 10 # wait for the export to finish, otherwise we might be moving files that are still being processed
+
+osascript -e 'display notification "Moving exports..." with title "Move Exports"'
 
 # this script receives a file path
 # the file contains a list of files like so:
